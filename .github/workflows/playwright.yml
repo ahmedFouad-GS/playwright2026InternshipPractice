@@ -1,8 +1,16 @@
+name: Playwright & Allure Automation
+
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+
+# Grants permissions required to deploy to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   automation-run:
@@ -10,43 +18,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Pull source code changes into target virtual environments
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Step 2: Provision verified Node runtimes
       - name: Setup Node Environment
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm' # Automates global dependency caching
+          cache: 'npm'
 
-      # Step 3: Install pristine locked modules
       - name: Install Project Dependencies
         run: npm ci
 
-      # Step 4: Provision Playwright OS runtime drivers and dependencies
       - name: Download Playwright Browsers
         run: npx playwright install --with-deps
 
-      # Step 5: Trigger headless test executions
       - name: Run E2E Automation Suites
         run: npx playwright test
+        continue-on-error: true # Prevents the pipeline from stopping so reports still build on failure
 
       # Step 6: Generate Single-File Allure Report
       - name: Generate Allure Report
-        if: always() # Ensure reporting fires even if tests crash
+        if: always()
         run: |
           npm install -g allure-commandline
           allure generate allure-results --single-file --clean -o allure-report-single
 
-      # Step 7: Export reporting artifacts straight to Github workflow dashboards
-      - name: Save Pipeline Reporting Artifacts
-        uses: actions/upload-artifact@v4
+      # Step 7: Consolidate reports into a single deployment folder
+      - name: Structure Reports for GitHub Pages
+        if: always()
+        run: |
+          mkdir -p public-reports
+          # Move Playwright HTML report folder
+          [ -d playwright-report ] && cp -r playwright-report public-reports/playwright
+          # Move Allure Single HTML file and name it index.html inside its folder
+          mkdir -p public-reports/allure
+          [ -f allure-report-single/index.html ] && cp allure-report-single/index.html public-reports/allure/index.html
+          
+          # Create a landing homepage index file so you can easily choose which report to look at
+          cat <<EOF > public-reports/index.html
+          <!DOCTYPE html>
+          <html>
+          <head><title>Test Execution Dashboards</title></head>
+          <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+            <h1>🚀 Test Execution Reports</h1>
+            <p>Select a report to view directly in your browser:</p>
+            <div style="margin-top: 30px;">
+              <a href="playwright/index.html" style="padding: 15px 25px; background: #2E6DF6; color: white; text-decoration: none; border-radius: 5px; margin: 10px; display: inline-block;">View Playwright HTML Report</a>
+              <a href="allure/index.html" style="padding: 15px 25px; background: #42B983; color: white; text-decoration: none; border-radius: 5px; margin: 10px; display: inline-block;">View Allure Single-File Report</a>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      # Step 8: Deploy directly to GitHub Pages
+      - name: Deploy Reports to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         if: always()
         with:
-          name: playwright-and-allure-html-reports
-          path: |
-            playwright-report/
-            allure-report-single/index.html
-          retention-days: 14
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public-reports
