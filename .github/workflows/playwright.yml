@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest    
     permissions:      
       pull-requests: write      
-      contents: write # Upgraded to write to allow writing to the job summary page
+      contents: write # Allows writing to the job summary page
 
     steps:      
       - name: Checkout code        
@@ -18,7 +18,9 @@ jobs:
       - name: Setup Node.js        
         uses: actions/setup-node@v4        
         with:          
-          node-version: lts/* - name: Install dependencies        
+          node-version: lts/*
+
+      - name: Install dependencies        
         run: npm ci      
 
       - name: Install Playwright Browsers        
