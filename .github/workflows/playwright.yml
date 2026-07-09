@@ -1,11 +1,11 @@
-name: Playwright Tests
+name: Playwright & Allure Automation
 on:  
   pull_request:    
     branches: [main]  
 
 jobs:  
   test:    
-    name: Run Playwright Tests    
+    name: Headless Playwright Multi-browser Execution
     runs-on: ubuntu-latest    
     permissions:      
       pull-requests: write      
