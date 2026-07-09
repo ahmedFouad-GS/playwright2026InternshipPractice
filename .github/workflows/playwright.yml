@@ -8,8 +8,8 @@ on:
 permissions:
   pull-requests: write
   contents: write
-  pages: write       # Required for deploying to GitHub Pages
-  id-token: write    # Required for secure OIDC deployment
+  pages: write       # Required for official GitHub Pages engine
+  id-token: write    # Required for secure OIDC deployment tokens
 
 jobs:  
   test:    
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js        
         uses: actions/setup-node@v4        
         with:          
-          node-version: 24 # Upgraded from lts/* to match GitHub's Node 24 environments
+          node-version: 24 
 
       - name: Install dependencies        
         run: npm ci      
@@ -34,7 +34,7 @@ jobs:
       - name: Run Playwright tests        
         timeout-minutes: 60        
         run: AUTO_ALLURE_OPEN=false npx playwright test
-        continue-on-error: true # Allows script to proceed to reporting even if tests fail
+        continue-on-error: true 
 
       # Step 6: Generate the Single-File Allure Report
       - name: Generate Allure Single-File Report
@@ -43,35 +43,67 @@ jobs:
           npm install -g allure-commandline
           allure generate allure-results --single-file --clean -o allure-report
 
-      # Step 7: Consolidate reports for secure web serving
+      # Step 7: Consolidate reports and add a main Landing Index Page
       - name: Structure Reports for GitHub Pages
         if: ${{ !cancelled() }}
         run: |
-          mkdir -p public-reports
-          [ -d reports/playwright-report ] && cp -r reports/playwright-report public-reports/playwright || echo "Playwright HTML folder missing"
+          mkdir -p public-reports/playwright
           mkdir -p public-reports/allure
+          
+          # Safely copy reports if they exist
+          [ -d reports/playwright-report ] && cp -r reports/playwright-report/* public-reports/playwright/ || echo "Playwright HTML folder missing"
           [ -f allure-report/index.html ] && cp allure-report/index.html public-reports/allure/index.html || echo "Allure index missing"
+          
+          # Create a landing home page so the root URL isn't a 404
+          cat <<EOF > public-reports/index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Test Execution Dashboards</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 50px; text-align: center; background: #f6f8fa; }
+              .card { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+              .btn { display: inline-block; padding: 12px 20px; margin: 10px; text-decoration: none; border-radius: 6px; font-weight: bold; color: white; }
+              .btn-pw { background: #2E6DF6; }
+              .btn-al { background: #42B983; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <h1>🚀 Test Execution Hub</h1>
+              <p>Select a live, interactive report below:</p>
+              <a href="playwright/index.html" class="btn btn-pw">Playwright HTML Report</a>
+              <a href="allure/index.html" class="btn btn-al">Allure Interactive Report</a>
+            </div>
+          </body>
+          </html>
+          EOF
 
-      # Step 8: Deploy to GitHub Pages (creates a live link instantly)
-      - name: Deploy Reports to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      # Step 8: Package and Upload your static directory using official Pages actions
+      - name: Upload Pages Artifact
         if: ${{ !cancelled() }}
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public-reports
+          path: ./public-reports
 
-      # Step 9: Add lightweight links to the Summary page (Zero size penalty!)
+      # Step 9: Live deploy to Pages engine instantly
+      - name: Deploy to GitHub Pages
+        if: ${{ !cancelled() }}
+        uses: actions/deploy-pages@v4
+
+      # Step 10: Dynamic workflow summaries
       - name: Publish Live Dashboard Links to Actions Summary
         if: ${{ !cancelled() }}
         run: |
-          echo "# 📊 Test Execution Dashboards" >> $GITHUB_STEP_SUMMARY
-          echo "Reports deployed successfully! Click the links below to view the interactive web reports directly in your browser:" >> $GITHUB_STEP_SUMMARY
+          echo "# 📊 Live Test Execution Dashboards" >> $GITHUB_STEP_SUMMARY
+          echo "Reports deployed successfully! Open them directly in your browser without downloading:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "* 🎭 [Open Playwright HTML Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/playwright/)" >> $GITHUB_STEP_SUMMARY
-          echo "* 🚀 [Open Allure Interactive Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/allure/)" >> $GITHUB_STEP_SUMMARY
+          echo "* 🏠 [Main Landing Page](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)" >> $GITHUB_STEP_SUMMARY
+          echo "* 🎭 [Playwright HTML Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/playwright/index.html)" >> $GITHUB_STEP_SUMMARY
+          echo "* 🚀 [Allure Interactive Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/allure/index.html)" >> $GITHUB_STEP_SUMMARY
 
       # Standard Fallback Uploads
-      - name: Upload Playwright report        
+      - name: Upload Playwright report archive
         uses: actions/upload-artifact@v4        
         if: ${{ !cancelled() }}        
         with:          
@@ -79,7 +111,7 @@ jobs:
           path: reports/playwright-report/
           retention-days: 30      
 
-      - name: Upload Allure report        
+      - name: Upload Allure report archive
         uses: actions/upload-artifact@v4        
         if: ${{ !cancelled() }}        
         with:          
@@ -90,13 +122,13 @@ jobs:
       - name: Post Playwright report summary        
         if: always()        
         uses: daun/playwright-report-summary@v3
-        continue-on-error: true # Don't crash if your config misses the JSON reporter
+        continue-on-error: true 
         with:          
           report-file: reports/json-report/test-results.json      
 
       - name: Publish Test Report        
         uses: ctrf-io/github-test-reporter@v1
-        continue-on-error: true # Don't crash if your config misses the CTRF reporter
+        continue-on-error: true 
         with:          
           report-path: 'ctrf/ctrf-report.json'          
           github-report: true        
