@@ -1,80 +1,95 @@
-name: Playwright & Allure Automation
+name: Playwright Tests
+on:  
+  pull_request:    
+    branches: [main]  
+  workflow_dispatch:  
+  schedule:    
+    - cron: "0 0 * * 0"
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+jobs:  
+  test:    
+    name: Run Playwright Tests    
+    runs-on: ubuntu-latest    
+    permissions:      
+      pull-requests: write      
+      contents: write # Upgraded to write to allow writing to the job summary page
 
-# Grants permissions required to deploy to GitHub Pages
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+    steps:      
+      - name: Checkout code        
+        uses: actions/checkout@v4      
 
-jobs:
-  automation-run:
-    name: Headless Playwright Multi-browser Execution
-    runs-on: ubuntu-latest
+      - name: Setup Node.js        
+        uses: actions/setup-node@v4        
+        with:          
+          node-version: lts/* - name: Install dependencies        
+        run: npm ci      
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Install Playwright Browsers        
+        run: npx playwright install --with-deps      
 
-      - name: Setup Node Environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
+      - name: Run Playwright tests        
+        timeout-minutes: 60        
+        run: AUTO_ALLURE_OPEN=false npx playwright test      
 
-      - name: Install Project Dependencies
-        run: npm ci
-
-      - name: Download Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: Run E2E Automation Suites
-        run: npx playwright test
-        continue-on-error: true # Prevents the pipeline from stopping so reports still build on failure
-
-      # Step 6: Generate Single-File Allure Report
-      - name: Generate Allure Report
-        if: always()
+      # Step 6: Generate the Single-File Allure Report in CI
+      - name: Generate Allure Single-File Report
+        if: ${{ !cancelled() }}
         run: |
           npm install -g allure-commandline
-          allure generate allure-results --single-file --clean -o allure-report-single
+          allure generate allure-results --single-file --clean -o allure-report
 
-      # Step 7: Consolidate reports into a single deployment folder
-      - name: Structure Reports for GitHub Pages
-        if: always()
+      # Step 7: Embed BOTH single-file HTML reports directly into the GitHub Actions Summary
+      - name: Publish HTML Reports Directly to Actions Summary
+        if: ${{ !cancelled() }}
         run: |
-          mkdir -p public-reports
-          # Move Playwright HTML report folder
-          [ -d playwright-report ] && cp -r playwright-report public-reports/playwright
-          # Move Allure Single HTML file and name it index.html inside its folder
-          mkdir -p public-reports/allure
-          [ -f allure-report-single/index.html ] && cp allure-report-single/index.html public-reports/allure/index.html
+          echo "# 📊 Interactive Test Dashboards" >> $GITHUB_STEP_SUMMARY
+          echo "You can view and interact with the full reports directly inside this summary panel by expanding the dropdowns below." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Create a landing homepage index file so you can easily choose which report to look at
-          cat <<EOF > public-reports/index.html
-          <!DOCTYPE html>
-          <html>
-          <head><title>Test Execution Dashboards</title></head>
-          <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-            <h1>🚀 Test Execution Reports</h1>
-            <p>Select a report to view directly in your browser:</p>
-            <div style="margin-top: 30px;">
-              <a href="playwright/index.html" style="padding: 15px 25px; background: #2E6DF6; color: white; text-decoration: none; border-radius: 5px; margin: 10px; display: inline-block;">View Playwright HTML Report</a>
-              <a href="allure/index.html" style="padding: 15px 25px; background: #42B983; color: white; text-decoration: none; border-radius: 5px; margin: 10px; display: inline-block;">View Allure Single-File Report</a>
-            </div>
-          </body>
-          </html>
-          EOF
+          # Inject Playwright Standalone HTML
+          if [ -f reports/playwright-report/index.html ]; then
+            echo "## 🎭 Playwright HTML Report" >> $GITHUB_STEP_SUMMARY
+            echo "<details><summary>🔍 Click to expand and view the Playwright Report</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat reports/playwright-report/index.html >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
 
-      # Step 8: Deploy directly to GitHub Pages
-      - name: Deploy Reports to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+          # Inject Allure Standalone HTML
+          if [ -f allure-report/index.html ]; then
+            echo "## 🚀 Allure HTML Report" >> $GITHUB_STEP_SUMMARY
+            echo "<details><summary>🔍 Click to expand and view the Allure Report</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat allure-report/index.html >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Playwright report        
+        uses: actions/upload-artifact@v4        
+        if: ${{ !cancelled() }}        
+        with:          
+          name: playwright-report          
+          path: reports/playwright-report/index.html          
+          retention-days: 30      
+
+      - name: Upload Allure report        
+        uses: actions/upload-artifact@v4        
+        if: ${{ !cancelled() }}        
+        with:          
+          name: allure-report          
+          path: allure-report/index.html          
+          retention-days: 30      
+
+      - name: Post Playwright report summary        
+        if: always()        
+        uses: daun/playwright-report-summary@v3        
+        with:          
+          report-file: reports/json-report/test-results.json      
+
+      - name: Publish Test Report        
+        uses: ctrf-io/github-test-reporter@v1        
+        with:          
+          report-path: 'ctrf/ctrf-report.json'          
+          github-report: true        
         if: always()
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public-reports
