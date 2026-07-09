@@ -23,7 +23,20 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: [['html'],['json'], ['allure-playwright']],
+  reporter: [
+    // 1. Standard Playwright HTML Report custom path
+    ['html', { outputFolder: 'reports/playwright-report', open: 'never' }],
+    
+    // 2. JSON Report required by daun/playwright-report-summary
+    ['json', { outputFile: 'reports/json-report/test-results.json' }],
+    
+    // 3. Allure reporter to generate raw results into ./allure-results
+    ['allure-playwright'],
+    
+    // 4. CTRF Report required by ctrf-io/github-test-reporter
+    // Make sure you have installed it via: npm install --save-dev playwright-ctrf-json-reporter
+    ['playwright-ctrf-json-reporter', { outputDir: 'ctrf', outputFile: 'ctrf-report.json' }]
+  ],
 
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
