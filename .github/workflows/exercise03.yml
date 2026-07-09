@@ -1,0 +1,59 @@
+# Playwright JS Bootcamp - Session 3 Lab Solution
+# Exercise 3: GitHub Actions Continuous Integration pipeline template
+#
+# Objective: Trigger browser automation runs on code push and export Allure/HTML visual report assets.
+
+name: Playwright Regression Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  automation-run:
+    name: Headless Playwright Multi-browser Execution
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Pull source code changes into target virtual environments
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Provision verified Node runtimes
+      - name: Setup Node Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm' # Automates global dependency caching
+
+      # Step 3: Install pristine locked modules
+      - name: Install Project Dependencies
+        run: npm ci
+
+      # Step 4: Provision Playwright OS runtime drivers and dependencies
+      - name: Download Playwright Browsers
+        run: npx playwright install --with-deps
+
+      # Step 5: Trigger headless test executions
+      - name: Run E2E Automation Suites
+        run: npx playwright test
+
+      # Step 6: Generate and organize Allure results
+      - name: Generate Allure Report
+        if: always() # Ensure reporting fires even if tests crash
+        run: |
+          npm install -g allure-commandline
+          allure generate allure-results --clean -o allure-report
+
+      # Step 7: Export reporting artifacts straight to Github workflow dashboards
+      - name: Save Pipeline Reporting Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-execution-reports
+          path: |
+            playwright-report/
+            allure-report/
+          retention-days: 14
